@@ -532,11 +532,12 @@ class SpotifyPlusCard extends HTMLElement {
   // ── DOM helper ────────────────────────────────────────────────────────
   _q(sel) { return this.shadowRoot.querySelector(sel); }
 
-  /** Resposta de serviço com return_response (HA envolve em { data: ... } em certas versões) */
+  /** Resposta de serviço com return_response (HA envolve em { context, response } ou { data }) */
   _serviceRes(res) {
     if (res == null) return null;
-    if (typeof res === "object" && res.data !== undefined && res.data !== null) {
-      return res.data;
+    if (typeof res === "object") {
+      if (res.response !== undefined && res.response !== null) return res.response;
+      if (res.data !== undefined && res.data !== null) return res.data;
     }
     return res;
   }
@@ -848,23 +849,35 @@ class SpotifyPlusCard extends HTMLElement {
     const out = this._q("#search-results-wrap");
     try {
       const raw = await this._hass.callService(
-        "spotify_plus", "search", { query, limit: 10 }, undefined, true
+        "spotify_plus", "search", { query, limit: 10 },
+        undefined, undefined, true
       );
       const data = this._serviceRes(raw);
       if (data && (data.tracks || data.albums || data.playlists)) {
         this._renderSearchResults(data);
-        return;
       }
-      // Service returned no usable data — fall back to bus event subscription
-      this._hass.callService("spotify_plus", "search", { query, limit: 10 });
     } catch (e) {
       out.innerHTML = `<div class="error-text">Busca falhou. Tente de novo.</div>`;
     }
   }
 
-  _playUri(uri, options = {}) {
+  async _playUri(uri, options = {}) {
     if (!this._hass || !uri) return;
-    this._hass.callService("spotify_plus", "play_uri", { uri, shuffle: !!options.shuffle });
+    try {
+      await this._hass.callService("spotify_plus", "play_uri", { uri, shuffle: !!options.shuffle });
+    } catch (e) {
+      // Erro já notificado nativamente pelo HomeAssistantError
+    }
+
+    // Spotify integration polls /me/player every ~30s. Force a refresh so the card
+    // reflects the new track within ~1s instead of waiting for the next poll.
+    // Slight delay so Spotify has time to update its state before HA polls.
+    setTimeout(() => {
+      this._hass.callService("homeassistant", "update_entity", {
+        entity_id: this._config.entity,
+      });
+    }, 800);
+
     if (options.clearSearch !== false) {
       this._q("#search-input").value = "";
       this._q("#search-history-wrap").innerHTML = "";
@@ -949,16 +962,14 @@ class SpotifyPlusCard extends HTMLElement {
     this._q("#sp-playlists-list").innerHTML = `<div class="loading-text">Carregando playlists...</div>`;
     try {
       const raw = await this._hass.callService(
-        "spotify_plus", "get_playlists", {}, undefined, true
+        "spotify_plus", "get_playlists", {},
+        undefined, undefined, true
       );
       const data = this._serviceRes(raw);
       if (data && Array.isArray(data.items)) {
         this._playlists = data.items;
         this._renderPlaylistsList();
-        return;
       }
-      // Service returned no usable data — fall back to bus event subscription
-      this._hass.callService("spotify_plus", "get_playlists", {});
     } catch (e) {
       this._q("#sp-playlists-list").innerHTML = `<div class="error-text">Não foi possível carregar playlists.</div>`;
     }
