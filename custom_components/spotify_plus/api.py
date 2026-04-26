@@ -75,9 +75,10 @@ class SpotifyPlusAPI:
                 return await resp.json()
 
     async def get_playlist_tracks(self, playlist_id: str, limit: int = 50) -> dict:
+        # /tracks was deprecated in Feb 2026 — replaced by /items
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks",
+                f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/items",
                 headers=self._headers,
                 params={"limit": limit},
             ) as resp:
