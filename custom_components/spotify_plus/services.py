@@ -1,6 +1,10 @@
 import logging
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.config_entry_oauth2_flow import (
+    OAuth2Session,
+    async_get_config_entry_implementation,
+)
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -33,16 +37,24 @@ SCHEMA_GET_PLAYLIST_TRACKS = vol.Schema({
 })
 
 
-def _get_token(hass):
+async def _get_token(hass):
     entries = hass.config_entries.async_entries("spotify")
     if not entries:
         return None
-    return entries[0].data.get("token", {}).get("access_token")
+    entry = entries[0]
+    try:
+        implementation = await async_get_config_entry_implementation(hass, entry)
+        session = OAuth2Session(hass, entry, implementation)
+        await session.async_ensure_token_valid()
+        return session.token["access_token"]
+    except Exception as err:
+        _LOGGER.warning("OAuth2Session failed (%s); falling back to stored token", err)
+        return entry.data.get("token", {}).get("access_token")
 
 
 def register_services(hass):
     async def handle_search(call):
-        token = _get_token(hass)
+        token = await _get_token(hass)
         if not token:
             _LOGGER.error("Spotify token not available")
             return
@@ -55,7 +67,7 @@ def register_services(hass):
             _LOGGER.error("Search failed: %s", err)
 
     async def handle_get_devices(call):
-        token = _get_token(hass)
+        token = await _get_token(hass)
         if not token:
             _LOGGER.error("Spotify token not available")
             return
@@ -68,7 +80,7 @@ def register_services(hass):
             _LOGGER.error("Get devices failed: %s", err)
 
     async def handle_play_uri(call):
-        token = _get_token(hass)
+        token = await _get_token(hass)
         if not token:
             _LOGGER.error("Spotify token not available")
             return
@@ -80,7 +92,7 @@ def register_services(hass):
             _LOGGER.error("Play URI failed: %s", err)
 
     async def handle_get_playlists(call):
-        token = _get_token(hass)
+        token = await _get_token(hass)
         if not token:
             _LOGGER.error("Spotify token not available")
             return
@@ -105,7 +117,7 @@ def register_services(hass):
             hass.bus.async_fire("spotify_plus_playlists", {"items": [], "error": str(err)})
 
     async def handle_get_playlist_tracks(call):
-        token = _get_token(hass)
+        token = await _get_token(hass)
         if not token:
             _LOGGER.error("Spotify token not available")
             return
