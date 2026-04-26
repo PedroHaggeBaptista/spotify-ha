@@ -70,11 +70,7 @@ class SpotifyPlusAPI:
             async with session.get(
                 f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks",
                 headers=self._headers,
-                params={
-                    "limit": limit,
-                    # Request only the fields we display — keeps response under 10KB
-                    "fields": "items(track(name,uri,is_local,artists(name),album(images(url))))",
-                },
+                params={"limit": limit},
             ) as resp:
                 resp.raise_for_status()
                 return await resp.json()
