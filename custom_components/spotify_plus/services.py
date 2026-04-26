@@ -1,11 +1,17 @@
 import logging
 import voluptuous as vol
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.config_entry_oauth2_flow import (
     OAuth2Session,
     async_get_config_entry_implementation,
 )
 from .const import DOMAIN
+
+try:
+    from homeassistant.core import SupportsResponse
+except ImportError:  # HA < 2023.2
+    SupportsResponse = None
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +31,7 @@ SCHEMA_GET_DEVICES = vol.Schema({})
 SCHEMA_PLAY_URI = vol.Schema({
     vol.Required("uri"): cv.string,
     vol.Optional("device_id"): cv.string,
+    vol.Optional("shuffle", default=False): cv.boolean,
 })
 
 SCHEMA_GET_PLAYLISTS = vol.Schema({
@@ -56,15 +63,21 @@ def register_services(hass):
     async def handle_search(call):
         token = await _get_token(hass)
         if not token:
-            _LOGGER.error("Spotify token not available")
-            return
+            raise HomeAssistantError("Token Spotify indisponível. Verifique a integração oficial do Spotify.")
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
         try:
-            results = await api.search(call.data["query"], limit=call.data.get("limit", 10))
-            hass.bus.async_fire("spotify_plus_search_results", results)
+            results = await api.search(
+                call.data["query"],
+                limit=call.data.get("limit", 10),
+            )
         except Exception as err:
             _LOGGER.error("Search failed: %s", err)
+            raise HomeAssistantError(f"Busca falhou: {err}") from err
+        if SupportsResponse is None:
+            hass.bus.async_fire("spotify_plus_search_results", results)
+            return
+        return results
 
     async def handle_get_devices(call):
         token = await _get_token(hass)
@@ -82,20 +95,23 @@ def register_services(hass):
     async def handle_play_uri(call):
         token = await _get_token(hass)
         if not token:
-            _LOGGER.error("Spotify token not available")
-            return
+            raise HomeAssistantError("Token Spotify indisponível. Verifique a integração oficial do Spotify.")
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
         try:
-            await api.play_uri(call.data["uri"], device_id=call.data.get("device_id"))
+            await api.play_uri(
+                call.data["uri"],
+                device_id=call.data.get("device_id"),
+                shuffle=call.data.get("shuffle", False),
+            )
         except Exception as err:
             _LOGGER.error("Play URI failed: %s", err)
+            raise HomeAssistantError(f"Reprodução falhou: {err}") from err
 
     async def handle_get_playlists(call):
         token = await _get_token(hass)
         if not token:
-            _LOGGER.error("Spotify token not available")
-            return
+            raise HomeAssistantError("Token Spotify indisponível. Verifique a integração oficial do Spotify.")
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
         try:
@@ -119,10 +135,13 @@ def register_services(hass):
                     "is_owned": owner_id == user_id,
                     "collaborative": pl.get("collaborative", False),
                 })
-            hass.bus.async_fire("spotify_plus_playlists", {"items": items})
         except Exception as err:
             _LOGGER.error("Get playlists failed: %s", err)
-            hass.bus.async_fire("spotify_plus_playlists", {"items": [], "error": str(err)})
+            raise HomeAssistantError(f"Falha ao listar playlists: {err}") from err
+        if SupportsResponse is None:
+            hass.bus.async_fire("spotify_plus_playlists", {"items": items})
+            return
+        return {"items": items}
 
     async def handle_get_playlist_tracks(call):
         token = await _get_token(hass)
@@ -158,8 +177,13 @@ def register_services(hass):
             _LOGGER.error("Get playlist tracks failed: %s", err)
             hass.bus.async_fire("spotify_plus_playlist_tracks", {"items": [], "error": msg})
 
-    hass.services.async_register(DOMAIN, SERVICE_SEARCH, handle_search, schema=SCHEMA_SEARCH)
+    _sr = (
+        {"supports_response": SupportsResponse.ONLY}
+        if SupportsResponse
+        else {}
+    )
+    hass.services.async_register(DOMAIN, SERVICE_SEARCH, handle_search, schema=SCHEMA_SEARCH, **_sr)
     hass.services.async_register(DOMAIN, SERVICE_GET_DEVICES, handle_get_devices, schema=SCHEMA_GET_DEVICES)
     hass.services.async_register(DOMAIN, SERVICE_PLAY_URI, handle_play_uri, schema=SCHEMA_PLAY_URI)
-    hass.services.async_register(DOMAIN, SERVICE_GET_PLAYLISTS, handle_get_playlists, schema=SCHEMA_GET_PLAYLISTS)
+    hass.services.async_register(DOMAIN, SERVICE_GET_PLAYLISTS, handle_get_playlists, schema=SCHEMA_GET_PLAYLISTS, **_sr)
     hass.services.async_register(DOMAIN, SERVICE_GET_PLAYLIST_TRACKS, handle_get_playlist_tracks, schema=SCHEMA_GET_PLAYLIST_TRACKS)

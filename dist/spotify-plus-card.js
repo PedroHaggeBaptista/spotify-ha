@@ -1,9 +1,9 @@
 /**
  * Spotify Plus Card — Lovelace Custom Card
- * v3.0.0 — Shell architecture: render once, update surgically
+ * v3.1.0 — Service responses (compat app) + playlist shuffle play
  */
 
-const CARD_VERSION = "3.0.0";
+const CARD_VERSION = "3.1.0";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap');
@@ -448,10 +448,7 @@ class SpotifyPlusCard extends HTMLElement {
     this._currentTab = "search";
     // playlists
     this._playlists = [];
-    this._currentPlaylistId = null;
-    this._currentPlaylistName = null;
-    // event unsub
-    this._unsubSearch = null;
+    this._unsubs = [];
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -485,12 +482,13 @@ class SpotifyPlusCard extends HTMLElement {
 
     if (!this._shellRendered) return;
 
-    // Subscribe to all events once, permanently
+    // Event bus (Home Assistant < 2023.2 / sem return_response). O app móvel costuma
+    // exigir resposta do serviço em vez de evento WebSocket.
     if (!this._initialized) {
       this._initialized = true;
       this._hass.connection.subscribeEvents((event) => {
         this._renderSearchResults(event.data);
-      }, "spotify_plus_search_results").then(u => { this._unsubSearch = u; });
+      }, "spotify_plus_search_results").then(u => this._unsubs.push(u));
 
       this._hass.connection.subscribeEvents((event) => {
         if (event.data?.error) {
@@ -500,19 +498,10 @@ class SpotifyPlusCard extends HTMLElement {
           return;
         }
         this._playlists = event.data?.items || [];
-        if (this._currentTab === "playlists" && !this._currentPlaylistId) {
+        if (this._currentTab === "playlists") {
           this._renderPlaylistsList();
         }
-      }, "spotify_plus_playlists");
-
-      this._hass.connection.subscribeEvents((event) => {
-        if (this._currentTab !== "playlists" || !this._currentPlaylistId) return;
-        if (event.data?.error) {
-          this._q("#sp-tracks-list").innerHTML = `<div class="error-text">Erro: ${event.data.error}</div>`;
-          return;
-        }
-        this._renderTracksList(event.data?.items || []);
-      }, "spotify_plus_playlist_tracks");
+      }, "spotify_plus_playlists").then(u => this._unsubs.push(u));
     }
 
     // Sync position base when HA sends a fresh position
@@ -537,11 +526,20 @@ class SpotifyPlusCard extends HTMLElement {
 
   disconnectedCallback() {
     this._stopProgressInterval();
-    if (this._unsubSearch) this._unsubSearch();
+    this._unsubs.forEach(u => (typeof u === "function" ? u() : null));
   }
 
   // ── DOM helper ────────────────────────────────────────────────────────
   _q(sel) { return this.shadowRoot.querySelector(sel); }
+
+  /** Resposta de serviço com return_response (HA envolve em { data: ... } em certas versões) */
+  _serviceRes(res) {
+    if (res == null) return null;
+    if (typeof res === "object" && res.data !== undefined && res.data !== null) {
+      return res.data;
+    }
+    return res;
+  }
 
   // ── State helpers ─────────────────────────────────────────────────────
   _getState() { return this._hass?.states[this._config?.entity] || null; }
@@ -642,8 +640,8 @@ class SpotifyPlusCard extends HTMLElement {
           <!-- Search tab content -->
           <div id="tab-search-content">
             <div class="search-row">
-              <input class="search-input" id="search-input" type="text"
-                placeholder="Música, artista, álbum..." autocomplete="off" />
+              <input class="search-input" id="search-input" type="search" enterkeyhint="search"
+                placeholder="Música, artista, álbum..." autocomplete="off" autocorrect="off" autocapitalize="off" />
               <button class="search-btn" id="search-btn">${icon.search}</button>
             </div>
             <div id="search-history-wrap"></div>
@@ -654,12 +652,6 @@ class SpotifyPlusCard extends HTMLElement {
           <div id="tab-playlists-content" style="display:none">
             <div id="sp-playlists-view">
               <div class="playlist-list" id="sp-playlists-list"></div>
-            </div>
-            <div id="sp-tracks-view" style="display:none">
-              <button class="back-btn" id="btn-back-pl">
-                ${icon.back} <span id="sp-pl-name"></span>
-              </button>
-              <div class="track-list" id="sp-tracks-list"></div>
             </div>
           </div>
 
@@ -716,7 +708,8 @@ class SpotifyPlusCard extends HTMLElement {
       if (q) this._search(q);
     });
     searchInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.keyCode === 13) {
+        e.preventDefault();
         const q = searchInput.value.trim();
         if (q) this._search(q);
       } else if (e.key === "Escape") {
@@ -740,13 +733,6 @@ class SpotifyPlusCard extends HTMLElement {
       setTimeout(() => { this._q("#search-history-wrap").innerHTML = ""; }, 200);
     });
 
-    // Back button in tracks view
-    this._q("#btn-back-pl").addEventListener("click", () => {
-      this._q("#sp-playlists-view").style.display = "block";
-      this._q("#sp-tracks-view").style.display = "none";
-      this._currentPlaylistId = null;
-      this._currentPlaylistName = null;
-    });
   }
 
   // ── Dynamic updates (surgical DOM mutations) ──────────────────────────
@@ -855,19 +841,35 @@ class SpotifyPlusCard extends HTMLElement {
   }
 
   // ── Search ────────────────────────────────────────────────────────────
-  _search(query) {
+  async _search(query) {
     if (!query || !this._hass) return;
     saveHistory(query);
     this._q("#search-history-wrap").innerHTML = "";
-    this._hass.callService("spotify_plus", "search", { query, limit: 10 });
+    const out = this._q("#search-results-wrap");
+    try {
+      const raw = await this._hass.callService(
+        "spotify_plus", "search", { query, limit: 10 }, undefined, true
+      );
+      const data = this._serviceRes(raw);
+      if (data && (data.tracks || data.albums || data.playlists)) {
+        this._renderSearchResults(data);
+        return;
+      }
+      // Service returned no usable data — fall back to bus event subscription
+      this._hass.callService("spotify_plus", "search", { query, limit: 10 });
+    } catch (e) {
+      out.innerHTML = `<div class="error-text">Busca falhou. Tente de novo.</div>`;
+    }
   }
 
-  _playUri(uri) {
-    if (!this._hass) return;
-    this._hass.callService("spotify_plus", "play_uri", { uri });
-    this._q("#search-input").value = "";
-    this._q("#search-history-wrap").innerHTML = "";
-    this._q("#search-results-wrap").innerHTML = "";
+  _playUri(uri, options = {}) {
+    if (!this._hass || !uri) return;
+    this._hass.callService("spotify_plus", "play_uri", { uri, shuffle: !!options.shuffle });
+    if (options.clearSearch !== false) {
+      this._q("#search-input").value = "";
+      this._q("#search-history-wrap").innerHTML = "";
+      this._q("#search-results-wrap").innerHTML = "";
+    }
   }
 
   _showSearchHistory() {
@@ -914,14 +916,15 @@ class SpotifyPlusCard extends HTMLElement {
         ${items.map(item => {
           const img = item.album?.images?.[0]?.url || item.images?.[0]?.url || "";
           const sub = item.artists?.map(a => a.name).join(", ") || item.owner?.display_name || item.type || "";
+          const pshuffle = (item.uri || "").includes("spotify:playlist:") ? "1" : "0";
           return `
-            <div class="result-item" data-uri="${item.uri}">
+            <div class="result-item" data-uri="${item.uri}" data-pshuffle="${pshuffle}">
               ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
               <div class="result-info">
                 <div class="result-name">${item.name}</div>
                 <div class="result-sub">${sub}</div>
               </div>
-              <button class="result-play-btn" data-uri="${item.uri}">${icon.playSm}</button>
+              <button type="button" class="result-play-btn" data-uri="${item.uri}" data-pshuffle="${pshuffle}">${icon.playSm}</button>
             </div>
           `;
         }).join("")}
@@ -929,29 +932,36 @@ class SpotifyPlusCard extends HTMLElement {
     `;
 
     container.querySelectorAll(".result-item").forEach(el => {
-      el.addEventListener("click", () => this._playUri(el.dataset.uri));
+      el.addEventListener("click", () => {
+        this._playUri(el.dataset.uri, { shuffle: el.dataset.pshuffle === "1", clearSearch: true });
+      });
     });
     container.querySelectorAll(".result-play-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._playUri(btn.dataset.uri, { shuffle: btn.dataset.pshuffle === "1", clearSearch: true });
+      });
     });
   }
 
-  // ── Playlists ─────────────────────────────────────────────────────────
-  _loadPlaylists() {
+  // ── Playlists (tocar com shuffle; listagem de faixas removida — API/Spotify) ──
+  async _loadPlaylists() {
     this._q("#sp-playlists-list").innerHTML = `<div class="loading-text">Carregando playlists...</div>`;
-    this._hass.callService("spotify_plus", "get_playlists", {});
-  }
-
-  _loadPlaylistTracks(playlistId, playlistName) {
-    this._currentPlaylistId   = playlistId;
-    this._currentPlaylistName = playlistName;
-
-    this._q("#sp-playlists-view").style.display = "none";
-    this._q("#sp-tracks-view").style.display    = "block";
-    this._q("#sp-pl-name").textContent = playlistName;
-    this._q("#sp-tracks-list").innerHTML = `<div class="loading-text">Carregando músicas...</div>`;
-
-    this._hass.callService("spotify_plus", "get_playlist_tracks", { playlist_id: playlistId });
+    try {
+      const raw = await this._hass.callService(
+        "spotify_plus", "get_playlists", {}, undefined, true
+      );
+      const data = this._serviceRes(raw);
+      if (data && Array.isArray(data.items)) {
+        this._playlists = data.items;
+        this._renderPlaylistsList();
+        return;
+      }
+      // Service returned no usable data — fall back to bus event subscription
+      this._hass.callService("spotify_plus", "get_playlists", {});
+    } catch (e) {
+      this._q("#sp-playlists-list").innerHTML = `<div class="error-text">Não foi possível carregar playlists.</div>`;
+    }
   }
 
   _renderPlaylistsList() {
@@ -969,57 +979,32 @@ class SpotifyPlusCard extends HTMLElement {
         ? (count !== "" ? `${count} músicas` : "")
         : `por ${pl.owner_name || "Spotify"}`;
       return `
-        <div class="playlist-item" data-id="${pl.id}" data-name="${pl.name.replace(/"/g, "&quot;")}" data-owned="${isOwned ? "1" : "0"}">
+        <div class="playlist-item" data-uri="${pl.uri || ""}" data-name="${(pl.name || "").replace(/"/g, "&quot;")}" data-owned="${isOwned ? "1" : "0"}">
           ${img ? `<img src="${img}" alt="" />` : `<div class="playlist-img-placeholder">${icon.musicSm}</div>`}
           <div class="playlist-info">
             <div class="playlist-name">${pl.name}</div>
             ${sub ? `<div class="playlist-sub">${sub}</div>` : ""}
           </div>
-          <button class="playlist-play-btn" data-uri="${pl.uri}" title="Tocar playlist">${icon.playSm}</button>
+          <button type="button" class="playlist-play-btn" data-uri="${pl.uri || ""}" title="Tocar (aleatório)">${icon.playSm}</button>
         </div>
       `;
     }).join("");
+
+    const playShuffled = (uri) => {
+      if (uri) this._playUri(uri, { shuffle: true, clearSearch: false });
+    };
 
     listEl.querySelectorAll(".playlist-item").forEach(el => {
       el.addEventListener("click", (e) => {
         if (e.target.closest(".playlist-play-btn")) return;
-        this._loadPlaylistTracks(el.dataset.id, el.dataset.name);
+        playShuffled(el.dataset.uri);
       });
     });
     listEl.querySelectorAll(".playlist-play-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
-    });
-  }
-
-  _renderTracksList(items) {
-    const tracksEl = this._q("#sp-tracks-list");
-    const valid = items.filter(i => i.track && !i.track.is_local);
-
-    if (!valid.length) {
-      tracksEl.innerHTML = `<div class="empty-text">Nenhuma faixa encontrada.</div>`;
-      return;
-    }
-
-    tracksEl.innerHTML = valid.map(({ track: t }) => {
-      const img = t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || "";
-      const sub = t.artists?.map(a => a.name).join(", ") || "";
-      return `
-        <div class="result-item" data-uri="${t.uri}">
-          ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
-          <div class="result-info">
-            <div class="result-name">${t.name}</div>
-            <div class="result-sub">${sub}</div>
-          </div>
-          <button class="result-play-btn" data-uri="${t.uri}">${icon.playSm}</button>
-        </div>
-      `;
-    }).join("");
-
-    tracksEl.querySelectorAll(".result-item").forEach(el => {
-      el.addEventListener("click", () => this._playUri(el.dataset.uri));
-    });
-    tracksEl.querySelectorAll(".result-play-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        playShuffled(btn.dataset.uri);
+      });
     });
   }
 
