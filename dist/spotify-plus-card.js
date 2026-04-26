@@ -964,14 +964,18 @@ class SpotifyPlusCard extends HTMLElement {
     listEl.innerHTML = this._playlists.map(pl => {
       const img   = pl.images?.[0]?.url || "";
       const count = pl.tracks?.total ?? "";
+      const isOwned = pl.is_owned || pl.collaborative;
+      const sub = isOwned
+        ? (count !== "" ? `${count} músicas` : "")
+        : `por ${pl.owner_name || "Spotify"}`;
       return `
-        <div class="playlist-item" data-id="${pl.id}" data-name="${pl.name.replace(/"/g, "&quot;")}">
+        <div class="playlist-item" data-id="${pl.id}" data-name="${pl.name.replace(/"/g, "&quot;")}" data-owned="${isOwned ? "1" : "0"}">
           ${img ? `<img src="${img}" alt="" />` : `<div class="playlist-img-placeholder">${icon.musicSm}</div>`}
           <div class="playlist-info">
             <div class="playlist-name">${pl.name}</div>
-            ${count !== "" ? `<div class="playlist-sub">${count} músicas</div>` : ""}
+            ${sub ? `<div class="playlist-sub">${sub}</div>` : ""}
           </div>
-          <button class="playlist-play-btn" data-uri="${pl.uri}">${icon.playSm}</button>
+          <button class="playlist-play-btn" data-uri="${pl.uri}" title="Tocar playlist">${icon.playSm}</button>
         </div>
       `;
     }).join("");

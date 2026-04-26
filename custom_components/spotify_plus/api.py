@@ -27,6 +27,15 @@ class SpotifyPlusAPI:
                 resp.raise_for_status()
                 return await resp.json()
 
+    async def get_me(self) -> dict:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/me",
+                headers=self._headers,
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+
     async def get_devices(self) -> list:
         async with aiohttp.ClientSession() as session:
             async with session.get(

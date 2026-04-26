@@ -99,18 +99,26 @@ def register_services(hass):
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
         try:
+            me = await api.get_me()
+            user_id = me.get("id")
+
             raw = await api.get_playlists(limit=call.data.get("limit", 20))
-            # Slim down — raw response is too large for HA event bus
-            items = [
-                {
+            items = []
+            for pl in raw.get("items", []):
+                if not pl:
+                    continue
+                owner = pl.get("owner", {}) or {}
+                owner_id = owner.get("id")
+                items.append({
                     "id": pl.get("id"),
                     "name": pl.get("name"),
                     "uri": pl.get("uri"),
                     "images": pl.get("images", [])[:1],
                     "tracks": {"total": pl.get("tracks", {}).get("total")},
-                }
-                for pl in raw.get("items", []) if pl
-            ]
+                    "owner_name": owner.get("display_name") or owner_id or "",
+                    "is_owned": owner_id == user_id,
+                    "collaborative": pl.get("collaborative", False),
+                })
             hass.bus.async_fire("spotify_plus_playlists", {"items": items})
         except Exception as err:
             _LOGGER.error("Get playlists failed: %s", err)
@@ -144,8 +152,11 @@ def register_services(hass):
                 })
             hass.bus.async_fire("spotify_plus_playlist_tracks", {"items": items})
         except Exception as err:
+            msg = str(err)
+            if "403" in msg:
+                msg = "Spotify restringe acesso a tracks de playlists de terceiros desde Fev/2025. Você ainda pode tocar a playlist inteira."
             _LOGGER.error("Get playlist tracks failed: %s", err)
-            hass.bus.async_fire("spotify_plus_playlist_tracks", {"items": [], "error": str(err)})
+            hass.bus.async_fire("spotify_plus_playlist_tracks", {"items": [], "error": msg})
 
     hass.services.async_register(DOMAIN, SERVICE_SEARCH, handle_search, schema=SCHEMA_SEARCH)
     hass.services.async_register(DOMAIN, SERVICE_GET_DEVICES, handle_get_devices, schema=SCHEMA_GET_DEVICES)
