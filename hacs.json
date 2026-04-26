@@ -1,0 +1,7 @@
+{
+  "name": "Spotify Plus",
+  "render_readme": true,
+  "domains": ["media_player"],
+  "content_in_root": false,
+  "homeassistant": "2023.1.0"
+}

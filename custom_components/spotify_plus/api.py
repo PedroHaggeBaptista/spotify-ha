@@ -1,0 +1,69 @@
+import aiohttp
+from .const import SPOTIFY_API_BASE
+
+
+class SpotifyPlusAPI:
+    def __init__(self, token: str):
+        self._token = token
+
+    @property
+    def _headers(self):
+        return {"Authorization": f"Bearer {self._token}"}
+
+    async def search(self, query: str, types: list = None, limit: int = 10) -> dict:
+        if types is None:
+            types = ["track", "album", "playlist"]
+        params = {
+            "q": query,
+            "type": ",".join(types),
+            "limit": limit,
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/search",
+                headers=self._headers,
+                params=params,
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+
+    async def get_devices(self) -> list:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/me/player/devices",
+                headers=self._headers,
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                return data.get("devices", [])
+
+    async def transfer_playback(self, device_id: str) -> None:
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                f"{SPOTIFY_API_BASE}/me/player",
+                headers=self._headers,
+                json={"device_ids": [device_id], "play": True},
+            ) as resp:
+                resp.raise_for_status()
+
+    async def get_queue(self) -> dict:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/me/player/queue",
+                headers=self._headers,
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+
+    async def play_uri(self, uri: str, device_id: str = None) -> None:
+        params = {}
+        if device_id:
+            params["device_id"] = device_id
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                f"{SPOTIFY_API_BASE}/me/player/play",
+                headers=self._headers,
+                params=params,
+                json={"uris": [uri]},
+            ) as resp:
+                resp.raise_for_status()

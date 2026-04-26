@@ -1,0 +1,9 @@
+{
+  "domain": "spotify_plus",
+  "name": "Spotify Plus",
+  "version": "1.0.0",
+  "dependencies": ["spotify"],
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "documentation": ""
+}
