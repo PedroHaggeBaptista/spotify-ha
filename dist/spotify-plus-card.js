@@ -1,17 +1,15 @@
 /**
  * Spotify Plus Card — Lovelace Custom Card
- * Phase 2: Playback + real-time progress + search with history + playlists
+ * v3.0.0 — Shell architecture: render once, update surgically
  */
 
-const CARD_VERSION = "2.0.0";
+const CARD_VERSION = "3.0.0";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap');
 
   :host {
     --sp-green: #1DB954;
-    --sp-green-dim: #1aa34a;
-    --sp-black: #0a0a0a;
     --sp-surface: #111111;
     --sp-surface2: #1a1a1a;
     --sp-surface3: #222222;
@@ -39,98 +37,62 @@ const styles = `
   }
 
   .ambient {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    transition: opacity 1.2s ease;
-    pointer-events: none;
-    z-index: 0;
+    position: absolute; inset: 0;
+    opacity: 0; transition: opacity 1.2s ease;
+    pointer-events: none; z-index: 0;
     filter: blur(60px) saturate(1.5);
     transform: scale(1.1);
   }
   .ambient.visible { opacity: 0.12; }
 
-  .inner {
-    position: relative;
-    z-index: 1;
-    padding: 20px;
-  }
+  .inner { position: relative; z-index: 1; padding: 20px; }
 
   /* ── NOW PLAYING ── */
   .now-playing {
     display: grid;
     grid-template-columns: 72px 1fr;
-    gap: 14px;
-    align-items: center;
+    gap: 14px; align-items: center;
     margin-bottom: 18px;
   }
 
   .album-art {
-    width: 72px;
-    height: 72px;
-    border-radius: 10px;
-    object-fit: cover;
-    display: block;
-    background: var(--sp-surface2);
+    width: 72px; height: 72px;
+    border-radius: 10px; object-fit: cover;
+    display: block; background: var(--sp-surface2);
     transition: transform 0.3s ease;
   }
   .album-art:hover { transform: scale(1.04); }
 
   .album-art-placeholder {
-    width: 72px;
-    height: 72px;
-    border-radius: 10px;
-    background: var(--sp-surface2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 72px; height: 72px;
+    border-radius: 10px; background: var(--sp-surface2);
+    display: flex; align-items: center; justify-content: center;
     color: var(--sp-text-dim);
   }
 
   .track-info { overflow: hidden; }
 
   .track-name {
-    font-size: 15px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    letter-spacing: -0.2px;
-    margin-bottom: 3px;
+    font-size: 15px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: -0.2px; margin-bottom: 3px;
   }
 
   .track-artist {
-    font-size: 12px;
-    color: var(--sp-text-dim);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-weight: 400;
-    margin-bottom: 6px;
+    font-size: 12px; color: var(--sp-text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-weight: 400; margin-bottom: 6px;
   }
 
   .playing-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-family: var(--sp-mono);
-    color: var(--sp-green);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 500;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; font-family: var(--sp-mono);
+    color: var(--sp-green); text-transform: uppercase;
+    letter-spacing: 0.5px; font-weight: 500;
   }
-
-  .playing-dots {
-    display: flex;
-    gap: 2px;
-    align-items: flex-end;
-    height: 10px;
-  }
+  .playing-dots { display: flex; gap: 2px; align-items: flex-end; height: 10px; }
   .playing-dots span {
-    display: block;
-    width: 2px;
-    border-radius: 1px;
+    display: block; width: 2px; border-radius: 1px;
     background: var(--sp-green);
     animation: equalizer 1.1s ease-in-out infinite;
   }
@@ -140,14 +102,9 @@ const styles = `
   .playing-dots span:nth-child(4) { height: 9px; animation-delay: 0.1s; }
 
   .paused-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-family: var(--sp-mono);
-    color: var(--sp-text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; font-family: var(--sp-mono);
+    color: var(--sp-text-dim); text-transform: uppercase; letter-spacing: 0.5px;
   }
 
   @keyframes equalizer {
@@ -159,50 +116,33 @@ const styles = `
   .progress-section { margin-bottom: 16px; }
 
   .progress-track {
-    height: 3px;
-    background: var(--sp-surface3);
-    border-radius: 2px;
-    overflow: hidden;
-    cursor: pointer;
-    margin-bottom: 6px;
-    transition: height 0.1s;
+    height: 3px; background: var(--sp-surface3);
+    border-radius: 2px; cursor: pointer;
+    margin-bottom: 6px; transition: height 0.1s;
   }
   .progress-track:hover { height: 5px; }
 
   .progress-fill {
-    height: 100%;
-    background: var(--sp-green);
-    border-radius: 2px;
-    pointer-events: none;
+    height: 100%; background: var(--sp-green);
+    border-radius: 2px; pointer-events: none;
+    will-change: width;
   }
 
   .progress-times {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    font-family: var(--sp-mono);
-    color: var(--sp-text-dim);
+    display: flex; justify-content: space-between;
+    font-size: 10px; font-family: var(--sp-mono); color: var(--sp-text-dim);
   }
 
   /* ── CONTROLS ── */
   .controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-bottom: 18px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; margin-bottom: 18px;
   }
 
   .ctrl-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--sp-text-dim);
-    padding: 8px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: none; border: none; cursor: pointer;
+    color: var(--sp-text-dim); padding: 8px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
     transition: color 0.15s, background 0.15s, transform 0.1s;
     -webkit-tap-highlight-color: transparent;
   }
@@ -211,88 +151,56 @@ const styles = `
   .ctrl-btn.active { color: var(--sp-green); }
 
   .ctrl-btn.play-pause {
-    width: 48px;
-    height: 48px;
-    background: var(--sp-green);
-    color: #000;
-    border-radius: 50%;
-    padding: 0;
+    width: 48px; height: 48px;
+    background: var(--sp-green); color: #000;
+    border-radius: 50%; padding: 0;
   }
-  .ctrl-btn.play-pause:hover { background: #1ed760; color: #000; transform: scale(1.04); }
+  .ctrl-btn.play-pause:hover { background: #1ed760; transform: scale(1.04); }
   .ctrl-btn.play-pause:active { transform: scale(0.95); }
 
   /* ── VOLUME ── */
   .volume-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
   }
-
   .volume-icon { color: var(--sp-text-dim); flex-shrink: 0; }
 
   .volume-slider {
-    flex: 1;
-    -webkit-appearance: none;
-    height: 3px;
-    background: var(--sp-surface3);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
+    flex: 1; -webkit-appearance: none;
+    height: 3px; background: var(--sp-surface3);
+    border-radius: 2px; outline: none; cursor: pointer;
   }
   .volume-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: var(--sp-text);
-    cursor: pointer;
+    -webkit-appearance: none; width: 13px; height: 13px;
+    border-radius: 50%; background: var(--sp-text); cursor: pointer;
     transition: background 0.15s, transform 0.15s;
   }
   .volume-slider:hover::-webkit-slider-thumb { background: var(--sp-green); transform: scale(1.2); }
   .volume-slider::-moz-range-thumb {
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: var(--sp-text);
-    cursor: pointer;
-    border: none;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--sp-text); cursor: pointer; border: none;
   }
 
   .volume-pct {
-    font-size: 10px;
-    font-family: var(--sp-mono);
-    color: var(--sp-text-dim);
-    width: 28px;
-    text-align: right;
-    flex-shrink: 0;
+    font-size: 10px; font-family: var(--sp-mono);
+    color: var(--sp-text-dim); width: 28px; text-align: right; flex-shrink: 0;
   }
 
-  /* ── DIVIDER ── */
+  /* ── DIVIDER / LABELS ── */
   .divider { height: 1px; background: var(--sp-border); margin-bottom: 14px; }
 
-  /* ── SECTION LABEL ── */
   .section-label {
-    font-size: 10px;
-    font-family: var(--sp-mono);
-    color: var(--sp-text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 10px;
+    font-size: 10px; font-family: var(--sp-mono);
+    color: var(--sp-text-dim); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 10px;
   }
 
-  /* ── DEVICE SELECTOR ── */
+  /* ── DEVICES ── */
   .devices-list { display: flex; flex-direction: column; gap: 4px; }
 
   .device-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: background 0.15s;
-    border: 1px solid transparent;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 10px; cursor: pointer;
+    transition: background 0.15s; border: 1px solid transparent;
   }
   .device-item:hover { background: var(--sp-surface2); }
   .device-item.active { background: var(--sp-surface2); border-color: var(--sp-border); }
@@ -300,18 +208,12 @@ const styles = `
   .device-icon { color: var(--sp-text-dim); flex-shrink: 0; }
   .device-item.active .device-icon { color: var(--sp-green); }
   .device-name {
-    font-size: 13px;
-    font-weight: 500;
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px; font-weight: 500; flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .device-active-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--sp-green);
-    flex-shrink: 0;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--sp-green); flex-shrink: 0;
     animation: pulse-dot 2s ease-in-out infinite;
   }
   @keyframes pulse-dot {
@@ -320,128 +222,77 @@ const styles = `
   }
 
   /* ── TAB BAR ── */
-  .tab-bar {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 12px;
-  }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 12px; }
+
   .tab-btn {
-    flex: 1;
-    background: var(--sp-surface2);
-    border: 1px solid var(--sp-border);
-    border-radius: 8px;
-    color: var(--sp-text-dim);
-    font-family: var(--sp-font);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 7px 0;
-    cursor: pointer;
+    flex: 1; background: var(--sp-surface2);
+    border: 1px solid var(--sp-border); border-radius: 8px;
+    color: var(--sp-text-dim); font-family: var(--sp-font);
+    font-size: 12px; font-weight: 500; padding: 7px 0; cursor: pointer;
     transition: color 0.15s, background 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
   }
   .tab-btn:hover { color: var(--sp-text); background: var(--sp-surface3); }
   .tab-btn.active { background: var(--sp-green); color: #000; border-color: transparent; }
 
   /* ── SEARCH ── */
-  .search-wrap { position: relative; }
-
   .search-row { display: flex; gap: 8px; margin-bottom: 4px; }
 
   .search-input {
-    flex: 1;
-    padding: 9px 12px;
-    background: var(--sp-surface2);
-    border: 1px solid var(--sp-border);
-    border-radius: 10px;
-    color: var(--sp-text);
-    font-family: var(--sp-font);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.15s;
+    flex: 1; padding: 9px 12px;
+    background: var(--sp-surface2); border: 1px solid var(--sp-border);
+    border-radius: 10px; color: var(--sp-text);
+    font-family: var(--sp-font); font-size: 13px;
+    outline: none; transition: border-color 0.15s;
   }
   .search-input:focus { border-color: var(--sp-green); }
   .search-input::placeholder { color: var(--sp-text-dim); }
 
   .search-btn {
-    padding: 9px 14px;
-    background: var(--sp-green);
-    color: #000;
-    border: none;
-    border-radius: 10px;
-    font-family: var(--sp-font);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
+    padding: 9px 14px; background: var(--sp-green); color: #000;
+    border: none; border-radius: 10px; font-family: var(--sp-font);
+    font-size: 13px; font-weight: 600; cursor: pointer;
     transition: background 0.15s, transform 0.1s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
   }
   .search-btn:hover { background: #1ed760; }
   .search-btn:active { transform: scale(0.95); }
 
-  /* history dropdown */
   .search-history {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 52px;
-    background: var(--sp-surface2);
-    border: 1px solid var(--sp-border);
-    border-radius: 10px;
-    overflow: hidden;
-    z-index: 10;
+    background: var(--sp-surface2); border: 1px solid var(--sp-border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 4px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   }
   .history-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 12px;
-    cursor: pointer;
-    font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; cursor: pointer; font-size: 13px;
     transition: background 0.15s;
   }
   .history-item:hover { background: var(--sp-surface3); }
   .history-icon { color: var(--sp-text-dim); flex-shrink: 0; }
   .history-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* results */
   .search-results {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-height: 280px;
-    overflow-y: auto;
-    margin-top: 8px;
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 280px; overflow-y: auto; margin-top: 8px;
   }
   .search-results::-webkit-scrollbar { width: 3px; }
   .search-results::-webkit-scrollbar-thumb { background: var(--sp-surface3); border-radius: 2px; }
 
+  /* ── RESULT / TRACK ITEMS ── */
   .result-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 6px;
-    border-radius: 8px;
-    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 6px; border-radius: 8px; cursor: pointer;
     transition: background 0.15s;
   }
   .result-item:hover { background: var(--sp-surface2); }
   .result-item img {
-    width: 40px; height: 40px;
-    border-radius: 5px;
-    object-fit: cover;
-    flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 5px;
+    object-fit: cover; flex-shrink: 0;
   }
   .result-img-placeholder {
-    width: 40px; height: 40px;
-    border-radius: 5px;
-    background: var(--sp-surface3);
-    flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 5px;
+    background: var(--sp-surface3); flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     color: var(--sp-text-dim);
   }
@@ -456,47 +307,34 @@ const styles = `
   }
   .result-play-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--sp-text-dim);
-    padding: 6px; border-radius: 50%;
+    color: var(--sp-text-dim); padding: 6px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s;
-    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s; flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
   }
   .result-play-btn:hover { color: var(--sp-green); background: var(--sp-surface3); }
 
   /* ── PLAYLISTS ── */
   .playlist-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-height: 320px;
-    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 4px;
+    max-height: 320px; overflow-y: auto;
   }
   .playlist-list::-webkit-scrollbar { width: 3px; }
   .playlist-list::-webkit-scrollbar-thumb { background: var(--sp-surface3); border-radius: 2px; }
 
   .playlist-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 6px;
-    border-radius: 8px;
-    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 6px; border-radius: 8px; cursor: pointer;
     transition: background 0.15s;
   }
   .playlist-item:hover { background: var(--sp-surface2); }
   .playlist-item img {
-    width: 44px; height: 44px;
-    border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 6px;
+    object-fit: cover; flex-shrink: 0;
   }
   .playlist-img-placeholder {
-    width: 44px; height: 44px;
-    border-radius: 6px;
-    background: var(--sp-surface3);
-    flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 6px;
+    background: var(--sp-surface3); flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     color: var(--sp-text-dim);
   }
@@ -505,53 +343,42 @@ const styles = `
     font-size: 13px; font-weight: 500;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .playlist-sub {
-    font-size: 11px; color: var(--sp-text-dim);
-  }
+  .playlist-sub { font-size: 11px; color: var(--sp-text-dim); }
   .playlist-play-btn {
     background: none; border: none; cursor: pointer;
-    color: var(--sp-text-dim);
-    padding: 6px; border-radius: 50%;
+    color: var(--sp-text-dim); padding: 6px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    transition: color 0.15s, background 0.15s;
-    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s; flex-shrink: 0;
   }
   .playlist-play-btn:hover { color: var(--sp-green); background: var(--sp-surface3); }
 
-  /* playlist tracks view */
+  /* tracks view */
   .back-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: none;
-    color: var(--sp-text-dim);
-    font-family: var(--sp-font);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 0 0 10px 0;
-    transition: color 0.15s;
+    display: flex; align-items: center; gap: 6px;
+    background: none; border: none; color: var(--sp-text-dim);
+    font-family: var(--sp-font); font-size: 12px; cursor: pointer;
+    padding: 0 0 10px 0; transition: color 0.15s;
   }
   .back-btn:hover { color: var(--sp-text); }
 
   .track-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    max-height: 320px;
-    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 320px; overflow-y: auto;
   }
   .track-list::-webkit-scrollbar { width: 3px; }
   .track-list::-webkit-scrollbar-thumb { background: var(--sp-surface3); border-radius: 2px; }
 
-  /* ── IDLE STATE ── */
-  .idle-header {
-    padding: 24px 0 16px;
-    text-align: center;
-  }
+  /* ── IDLE ── */
+  .idle-header { padding: 24px 0 16px; text-align: center; }
   .idle-icon { color: var(--sp-text-dim); margin-bottom: 12px; }
   .idle-title { font-size: 14px; font-weight: 500; color: var(--sp-text-mid); margin-bottom: 4px; }
   .idle-sub { font-size: 12px; color: var(--sp-text-dim); }
+
+  /* ── UTILITY ── */
+  .loading-text, .empty-text, .error-text {
+    font-size: 12px; color: var(--sp-text-dim); padding: 10px 4px;
+  }
+  .error-text { color: rgba(255,100,100,0.8); }
 `;
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
@@ -581,28 +408,26 @@ const icon = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 function formatTime(s) {
   if (!s || isNaN(s)) return "0:00";
-  const m = Math.floor(s / 60);
-  return `${m}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
-function getDeviceIcon(type) {
-  if (!type) return icon.speaker;
-  const t = type.toLowerCase();
-  if (t.includes("speaker") || t.includes("echo") || t.includes("alexa")) return icon.speaker;
-  if (t.includes("tv") || t.includes("cast") || t.includes("chromecast")) return icon.tv;
-  if (t.includes("computer") || t.includes("desktop") || t.includes("laptop")) return icon.computer;
-  if (t.includes("smartphone") || t.includes("phone")) return icon.phone;
+function getSourceIcon(name) {
+  if (!name) return icon.speaker;
+  const n = name.toLowerCase();
+  if (n.includes("echo") || n.includes("alexa")) return icon.speaker;
+  if (n.includes("web player") || n.includes("computer") || n.includes("desktop") || n.includes("laptop")) return icon.computer;
+  if (n.includes("iphone") || n.includes("android") || n.includes("phone") || n.includes("mobile")) return icon.phone;
+  if (n.includes("tv") || n.includes("cast") || n.includes("chromecast")) return icon.tv;
   return icon.speaker;
 }
 
 const HISTORY_KEY = "spotify_plus_search_history";
-const HISTORY_MAX = 5;
 
 function loadHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; }
 }
 function saveHistory(query) {
-  const h = [query, ...loadHistory().filter(q => q !== query)].slice(0, HISTORY_MAX);
+  const h = [query, ...loadHistory().filter(q => q !== query)].slice(0, 5);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
 }
 
@@ -611,559 +436,595 @@ class SpotifyPlusCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._config = {};
+    this._config = null;
     this._hass = null;
+    this._shellRendered = false;
+    this._initialized = false;
     // progress
     this._progressInterval = null;
-    this._localPosition = 0;
     this._positionBase = 0;
     this._positionBaseTime = 0;
-    // search
-    this._searchResults = [];
-    this._searchQuery = "";
-    this._showHistory = false;
+    // tabs
+    this._currentTab = "search";
     // playlists
     this._playlists = [];
-    this._playlistTracks = null;
-    this._activePlaylist = null;
-    // tabs: "search" | "playlists"
-    this._activeTab = "search";
-    // subscriptions
-    this._initialized = false;
+    this._currentPlaylistId = null;
+    this._currentPlaylistName = null;
+    // event unsub
     this._unsubSearch = null;
-    this._unsubPlaylists = null;
-    this._unsubPlaylistTracks = null;
-    // outside click for closing history
-    this._outsideClickHandler = null;
   }
 
+  // ── Lifecycle ─────────────────────────────────────────────────────────
   setConfig(config) {
     if (!config.entity) throw new Error("spotify-plus-card: 'entity' é obrigatório");
     this._config = config;
-    this._render();
+    if (!this._shellRendered) {
+      this._renderShell();
+      this._shellRendered = true;
+    }
   }
 
   set hass(hass) {
-    const prev = this._hass;
+    const newState = hass.states[this._config?.entity];
+    const oldState = this._hass?.states[this._config?.entity];
+
+    const stateChanged    = newState?.state !== oldState?.state;
+    const titleChanged    = newState?.attributes?.media_title !== oldState?.attributes?.media_title;
+    const posChanged      = newState?.attributes?.media_position !== oldState?.attributes?.media_position;
+    const volChanged      = newState?.attributes?.volume_level !== oldState?.attributes?.volume_level;
+    const shuffleChanged  = newState?.attributes?.shuffle !== oldState?.attributes?.shuffle;
+    const repeatChanged   = newState?.attributes?.repeat !== oldState?.attributes?.repeat;
+    const sourceChanged   = newState?.attributes?.source !== oldState?.attributes?.source;
+    const sourceListChanged = JSON.stringify(newState?.attributes?.source_list) !== JSON.stringify(oldState?.attributes?.source_list);
+    const pictureChanged  = newState?.attributes?.entity_picture !== oldState?.attributes?.entity_picture;
+
+    const relevantChanged = stateChanged || titleChanged || posChanged || volChanged ||
+      shuffleChanged || repeatChanged || sourceChanged || sourceListChanged;
+
     this._hass = hass;
 
+    if (!this._shellRendered) return;
+
+    // Subscribe to all events once, permanently
     if (!this._initialized) {
       this._initialized = true;
-      this._subscribeEvents();
+      this._hass.connection.subscribeEvents((event) => {
+        this._renderSearchResults(event.data);
+      }, "spotify_plus_search_results").then(u => { this._unsubSearch = u; });
+
+      this._hass.connection.subscribeEvents((event) => {
+        if (event.data?.error) {
+          if (this._currentTab === "playlists") {
+            this._q("#sp-playlists-list").innerHTML = `<div class="error-text">Erro: ${event.data.error}</div>`;
+          }
+          return;
+        }
+        this._playlists = event.data?.items || [];
+        if (this._currentTab === "playlists" && !this._currentPlaylistId) {
+          this._renderPlaylistsList();
+        }
+      }, "spotify_plus_playlists");
+
+      this._hass.connection.subscribeEvents((event) => {
+        if (this._currentTab !== "playlists" || !this._currentPlaylistId) return;
+        if (event.data?.error) {
+          this._q("#sp-tracks-list").innerHTML = `<div class="error-text">Erro: ${event.data.error}</div>`;
+          return;
+        }
+        this._renderTracksList(event.data?.items || []);
+      }, "spotify_plus_playlist_tracks");
     }
 
-    const state = this._getState();
-    const isPlaying = state?.state === "playing";
-    const attr = state?.attributes || {};
-
-    // Sync position base when HA updates position
-    if (attr.media_position_updated_at) {
-      const updatedAt = new Date(attr.media_position_updated_at).getTime();
-      this._positionBase = attr.media_position || 0;
-      this._positionBaseTime = updatedAt;
+    // Sync position base when HA sends a fresh position
+    if (newState?.attributes?.media_position_updated_at && (posChanged || stateChanged)) {
+      this._positionBase = newState.attributes.media_position || 0;
+      this._positionBaseTime = new Date(newState.attributes.media_position_updated_at).getTime();
     }
 
-    if (isPlaying) {
-      this._startProgressInterval();
-    } else {
-      this._stopProgressInterval();
-      this._localPosition = attr.media_position || 0;
+    // Manage progress interval only on state transitions
+    if (stateChanged) {
+      if (newState?.state === "playing") {
+        this._startProgressInterval();
+      } else {
+        this._stopProgressInterval();
+      }
     }
 
-    this._render();
+    if (!relevantChanged && !pictureChanged) return;
+
+    this._updateDynamicParts(pictureChanged);
   }
 
   disconnectedCallback() {
     this._stopProgressInterval();
     if (this._unsubSearch) this._unsubSearch();
-    if (this._unsubPlaylists) this._unsubPlaylists();
-    if (this._unsubPlaylistTracks) this._unsubPlaylistTracks();
-    if (this._outsideClickHandler) document.removeEventListener("click", this._outsideClickHandler);
   }
 
-  // ── Event subscriptions ───────────────────────────────────────────────
-  _subscribeEvents() {
-    this._hass.connection.subscribeEvents((event) => {
-      this._searchResults = event.data;
-      this._render();
-    }, "spotify_plus_search_results").then(u => { this._unsubSearch = u; });
+  // ── DOM helper ────────────────────────────────────────────────────────
+  _q(sel) { return this.shadowRoot.querySelector(sel); }
 
-    this._hass.connection.subscribeEvents((event) => {
-      this._playlists = event.data?.items || [];
-      this._render();
-    }, "spotify_plus_playlists").then(u => { this._unsubPlaylists = u; });
-
-    this._hass.connection.subscribeEvents((event) => {
-      this._playlistTracks = event.data?.items || [];
-      this._render();
-    }, "spotify_plus_playlist_tracks").then(u => { this._unsubPlaylistTracks = u; });
-  }
-
-  // ── Real-time progress ────────────────────────────────────────────────
-  _startProgressInterval() {
-    if (this._progressInterval) return;
-    this._progressInterval = setInterval(() => {
-      this._tickProgress();
-    }, 1000);
-  }
-
-  _stopProgressInterval() {
-    if (this._progressInterval) {
-      clearInterval(this._progressInterval);
-      this._progressInterval = null;
-    }
-  }
+  // ── State helpers ─────────────────────────────────────────────────────
+  _getState() { return this._hass?.states[this._config?.entity] || null; }
 
   _currentPosition() {
     const state = this._getState();
-    if (state?.state !== "playing") return this._localPosition;
-    const elapsed = (Date.now() - this._positionBaseTime) / 1000;
-    return this._positionBase + elapsed;
+    if (!state) return 0;
+    if (state.state !== "playing") return state.attributes?.media_position || 0;
+    return Math.max(0, this._positionBase + (Date.now() - this._positionBaseTime) / 1000);
+  }
+
+  // ── Progress interval ─────────────────────────────────────────────────
+  _startProgressInterval() {
+    if (this._progressInterval) return;
+    this._progressInterval = setInterval(() => this._tickProgress(), 1000);
+  }
+
+  _stopProgressInterval() {
+    if (!this._progressInterval) return;
+    clearInterval(this._progressInterval);
+    this._progressInterval = null;
   }
 
   _tickProgress() {
     const state = this._getState();
-    if (!state || state.state !== "playing") {
-      this._stopProgressInterval();
-      return;
-    }
+    if (!state || state.state !== "playing") { this._stopProgressInterval(); return; }
     const duration = state.attributes?.media_duration || 0;
     const pos = this._currentPosition();
-    const progress = duration > 0 ? Math.min((pos / duration) * 100, 100) : 0;
-
-    // Update only the progress bar and times — no full re-render
-    const fill = this.shadowRoot.querySelector(".progress-fill");
-    const timeEl = this.shadowRoot.querySelector(".progress-current");
-    if (fill) fill.style.width = `${progress}%`;
-    if (timeEl) timeEl.textContent = formatTime(pos);
+    const pct = duration > 0 ? Math.min((pos / duration) * 100, 100) : 0;
+    const fill = this._q("#sp-progress-fill");
+    const posEl = this._q("#sp-pos");
+    if (fill) fill.style.width = `${pct}%`;
+    if (posEl) posEl.textContent = formatTime(pos);
   }
 
-  // ── HA state helpers ──────────────────────────────────────────────────
-  _getState() {
-    return this._hass?.states[this._config.entity] || null;
+  // ── Shell (rendered once) ─────────────────────────────────────────────
+  _renderShell() {
+    this.shadowRoot.innerHTML = `
+      <style>${styles}</style>
+      <ha-card class="card">
+        <div class="ambient" id="sp-ambient"></div>
+        <div class="inner">
+
+          <!-- Idle state -->
+          <div id="sp-idle" style="display:none">
+            <div class="idle-header">
+              <div class="idle-icon">${icon.music}</div>
+              <div class="idle-title">Spotify Plus</div>
+              <div class="idle-sub">Nenhuma música tocando</div>
+            </div>
+          </div>
+
+          <!-- Now playing -->
+          <div id="sp-nowplaying" style="display:none">
+            <div class="now-playing">
+              <div id="sp-art-wrap" class="album-art-placeholder">${icon.music}</div>
+              <div class="track-info">
+                <div class="track-name" id="sp-track-name">—</div>
+                <div class="track-artist" id="sp-track-artist">—</div>
+                <div id="sp-playing-status"></div>
+              </div>
+            </div>
+
+            <div class="progress-section">
+              <div class="progress-track">
+                <div class="progress-fill" id="sp-progress-fill" style="width:0%"></div>
+              </div>
+              <div class="progress-times">
+                <span id="sp-pos">0:00</span>
+                <span id="sp-dur">0:00</span>
+              </div>
+            </div>
+
+            <div class="controls">
+              <button class="ctrl-btn" id="btn-shuffle" title="Shuffle">${icon.shuffle}</button>
+              <button class="ctrl-btn" id="btn-prev" title="Anterior">${icon.prev}</button>
+              <button class="ctrl-btn play-pause" id="btn-playpause">${icon.play}</button>
+              <button class="ctrl-btn" id="btn-next" title="Próxima">${icon.next}</button>
+              <button class="ctrl-btn" id="btn-repeat" title="Repeat">${icon.repeat}</button>
+            </div>
+
+            <div class="volume-row">
+              <div class="volume-icon" id="sp-vol-icon">${icon.volHigh}</div>
+              <input type="range" class="volume-slider" id="vol-slider" min="0" max="100" value="50" />
+              <span class="volume-pct" id="sp-vol-pct">50%</span>
+            </div>
+
+            <div id="sp-devices-section"></div>
+          </div>
+
+          <!-- Tabs (always visible) -->
+          <div class="divider" id="sp-tab-divider" style="margin-top:0"></div>
+          <div class="tab-bar">
+            <button class="tab-btn active" id="tab-search-btn">${icon.search} Buscar</button>
+            <button class="tab-btn" id="tab-playlists-btn">${icon.playlist} Playlists</button>
+          </div>
+
+          <!-- Search tab content -->
+          <div id="tab-search-content">
+            <div class="search-row">
+              <input class="search-input" id="search-input" type="text"
+                placeholder="Música, artista, álbum..." autocomplete="off" />
+              <button class="search-btn" id="search-btn">${icon.search}</button>
+            </div>
+            <div id="search-history-wrap"></div>
+            <div id="search-results-wrap"></div>
+          </div>
+
+          <!-- Playlists tab content -->
+          <div id="tab-playlists-content" style="display:none">
+            <div id="sp-playlists-view">
+              <div class="playlist-list" id="sp-playlists-list"></div>
+            </div>
+            <div id="sp-tracks-view" style="display:none">
+              <button class="back-btn" id="btn-back-pl">
+                ${icon.back} <span id="sp-pl-name"></span>
+              </button>
+              <div class="track-list" id="sp-tracks-list"></div>
+            </div>
+          </div>
+
+        </div>
+      </ha-card>
+    `;
+
+    this._attachShellListeners();
   }
 
-  _getMediaPlayers() {
-    if (!this._hass) return [];
-    return Object.entries(this._hass.states)
-      .filter(([id, s]) => id.startsWith("media_player.") && s.state !== "unavailable")
-      .map(([id, s]) => ({
-        entity_id: id,
-        name: s.attributes.friendly_name || id,
-        type: s.attributes.device_class || s.attributes.source || "",
-        active: id === this._config.entity && ["playing", "paused"].includes(s.state),
-      }))
-      .sort((a, b) => b.active - a.active);
+  _attachShellListeners() {
+    // Playback controls
+    this._q("#btn-playpause").addEventListener("click", () => {
+      const s = this._getState();
+      if (!s) return;
+      this._hass.callService("media_player", s.state === "playing" ? "media_pause" : "media_play", { entity_id: this._config.entity });
+    });
+    this._q("#btn-prev").addEventListener("click", () => {
+      this._hass.callService("media_player", "media_previous_track", { entity_id: this._config.entity });
+    });
+    this._q("#btn-next").addEventListener("click", () => {
+      this._hass.callService("media_player", "media_next_track", { entity_id: this._config.entity });
+    });
+    this._q("#btn-shuffle").addEventListener("click", () => {
+      const s = this._getState();
+      if (!s) return;
+      this._hass.callService("media_player", "shuffle_set", { entity_id: this._config.entity, shuffle: !s.attributes.shuffle });
+    });
+    this._q("#btn-repeat").addEventListener("click", () => {
+      const s = this._getState();
+      if (!s) return;
+      const modes = ["off", "one", "all"];
+      const next = modes[(modes.indexOf(s.attributes.repeat || "off") + 1) % modes.length];
+      this._hass.callService("media_player", "repeat_set", { entity_id: this._config.entity, repeat: next });
+    });
+
+    // Volume
+    const volSlider = this._q("#vol-slider");
+    volSlider.addEventListener("change", (e) => {
+      this._hass.callService("media_player", "volume_set", { entity_id: this._config.entity, volume_level: parseInt(e.target.value) / 100 });
+    });
+    volSlider.addEventListener("input", (e) => {
+      this._q("#sp-vol-pct").textContent = `${e.target.value}%`;
+    });
+
+    // Tabs
+    this._q("#tab-search-btn").addEventListener("click", () => this._switchTab("search"));
+    this._q("#tab-playlists-btn").addEventListener("click", () => this._switchTab("playlists"));
+
+    // Search
+    const searchInput = this._q("#search-input");
+    this._q("#search-btn").addEventListener("click", () => {
+      const q = searchInput.value.trim();
+      if (q) this._search(q);
+    });
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const q = searchInput.value.trim();
+        if (q) this._search(q);
+      } else if (e.key === "Escape") {
+        searchInput.value = "";
+        this._q("#search-history-wrap").innerHTML = "";
+        this._q("#search-results-wrap").innerHTML = "";
+      }
+    });
+    searchInput.addEventListener("focus", () => {
+      if (!searchInput.value.trim()) this._showSearchHistory();
+    });
+    searchInput.addEventListener("input", () => {
+      if (!searchInput.value.trim()) {
+        this._showSearchHistory();
+      } else {
+        this._q("#search-history-wrap").innerHTML = "";
+      }
+    });
+    // Hide history on blur (delay allows click on history item to fire first)
+    searchInput.addEventListener("blur", () => {
+      setTimeout(() => { this._q("#search-history-wrap").innerHTML = ""; }, 200);
+    });
+
+    // Back button in tracks view
+    this._q("#btn-back-pl").addEventListener("click", () => {
+      this._q("#sp-playlists-view").style.display = "block";
+      this._q("#sp-tracks-view").style.display = "none";
+      this._currentPlaylistId = null;
+      this._currentPlaylistName = null;
+    });
   }
 
-  // ── Service calls ─────────────────────────────────────────────────────
-  _callService(domain, service, data) {
-    this._hass.callService(domain, service, data);
+  // ── Dynamic updates (surgical DOM mutations) ──────────────────────────
+  _updateDynamicParts(pictureChanged = false) {
+    const state = this._getState();
+    const isPlaying = state?.state === "playing";
+    const isActive  = isPlaying || state?.state === "paused";
+    const attr = state?.attributes || {};
+
+    // Show/hide idle vs nowplaying
+    this._q("#sp-idle").style.display      = isActive ? "none"  : "block";
+    this._q("#sp-nowplaying").style.display = isActive ? "block" : "none";
+    this._q("#sp-tab-divider").style.marginTop = isActive ? "14px" : "0";
+
+    if (!isActive) return;
+
+    // Album art + ambient glow (only when picture changes)
+    if (pictureChanged) {
+      const artWrap = this._q("#sp-art-wrap");
+      const amb = this._q("#sp-ambient");
+      if (attr.entity_picture) {
+        artWrap.className = "";
+        artWrap.innerHTML = `<img class="album-art" src="${attr.entity_picture}" alt="" />`;
+        amb.style.background = `url('${attr.entity_picture}') center/cover`;
+        // Small delay so the CSS transition runs
+        requestAnimationFrame(() => setTimeout(() => amb.classList.add("visible"), 50));
+      } else {
+        artWrap.className = "album-art-placeholder";
+        artWrap.innerHTML = icon.music;
+        amb.classList.remove("visible");
+      }
+    }
+
+    // Track info
+    this._q("#sp-track-name").textContent  = attr.media_title  || "—";
+    this._q("#sp-track-artist").textContent = attr.media_artist || "—";
+
+    const statusEl = this._q("#sp-playing-status");
+    statusEl.innerHTML = isPlaying
+      ? `<div class="playing-badge"><div class="playing-dots"><span></span><span></span><span></span><span></span></div>Tocando</div>`
+      : `<div class="paused-badge">⏸ Pausado</div>`;
+
+    // Progress
+    const duration = attr.media_duration || 0;
+    const pos = this._currentPosition();
+    this._q("#sp-progress-fill").style.width = duration > 0 ? `${Math.min((pos / duration) * 100, 100)}%` : "0%";
+    this._q("#sp-pos").textContent = formatTime(pos);
+    this._q("#sp-dur").textContent = formatTime(duration);
+
+    // Controls active states
+    this._q("#btn-shuffle").classList.toggle("active", !!attr.shuffle);
+    this._q("#btn-repeat").classList.toggle("active", (attr.repeat || "off") !== "off");
+    this._q("#btn-playpause").innerHTML = isPlaying ? icon.pause : icon.play;
+
+    // Volume
+    const vol = Math.round((attr.volume_level || 0) * 100);
+    this._q("#vol-slider").value = vol;
+    this._q("#sp-vol-pct").textContent = `${vol}%`;
+    this._q("#sp-vol-icon").innerHTML = vol === 0 ? icon.volMute : vol < 50 ? icon.volLow : icon.volHigh;
+
+    // Devices from source_list
+    this._updateDevices(attr);
   }
 
-  _handlePlayPause() {
-    const s = this._getState();
-    if (!s) return;
-    this._callService("media_player", s.state === "playing" ? "media_pause" : "media_play", { entity_id: this._config.entity });
-  }
-  _handlePrev() { this._callService("media_player", "media_previous_track", { entity_id: this._config.entity }); }
-  _handleNext() { this._callService("media_player", "media_next_track", { entity_id: this._config.entity }); }
+  _updateDevices(attr) {
+    const sourceList  = attr.source_list || [];
+    const activeSource = attr.source || "";
+    const section = this._q("#sp-devices-section");
 
-  _handleShuffle() {
-    const s = this._getState();
-    if (!s) return;
-    this._callService("media_player", "shuffle_set", { entity_id: this._config.entity, shuffle: !s.attributes.shuffle });
-  }
+    if (!sourceList.length) { section.innerHTML = ""; return; }
 
-  _handleRepeat() {
-    const s = this._getState();
-    if (!s) return;
-    const modes = ["off", "one", "all"];
-    const next = modes[(modes.indexOf(s.attributes.repeat || "off") + 1) % modes.length];
-    this._callService("media_player", "repeat_set", { entity_id: this._config.entity, repeat: next });
-  }
+    section.innerHTML = `
+      <div class="divider"></div>
+      <div class="section-label">Dispositivos</div>
+      <div class="devices-list">
+        ${sourceList.map(src => `
+          <div class="device-item ${src === activeSource ? "active" : ""}" data-source="${src.replace(/"/g, "&quot;")}">
+            <div class="device-icon">${getSourceIcon(src)}</div>
+            <div class="device-name">${src}</div>
+            ${src === activeSource ? `<div class="device-active-dot"></div>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
 
-  _handleVolume(val) {
-    this._callService("media_player", "volume_set", { entity_id: this._config.entity, volume_level: val / 100 });
-  }
-
-  _handleDeviceSwitch(entityId) {
-    this._callService("media_player", "media_play", { entity_id: entityId });
+    section.querySelectorAll(".device-item").forEach(el => {
+      el.addEventListener("click", () => {
+        this._hass.callService("media_player", "select_source", { entity_id: this._config.entity, source: el.dataset.source });
+      });
+    });
   }
 
+  // ── Tab switching ─────────────────────────────────────────────────────
+  _switchTab(tab) {
+    this._currentTab = tab;
+    const isSearch = tab === "search";
+
+    this._q("#tab-search-content").style.display    = isSearch ? "block" : "none";
+    this._q("#tab-playlists-content").style.display = isSearch ? "none"  : "block";
+    this._q("#tab-search-btn").classList.toggle("active", isSearch);
+    this._q("#tab-playlists-btn").classList.toggle("active", !isSearch);
+
+    if (!isSearch && !this._playlists.length) {
+      this._loadPlaylists();
+    }
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────
   _search(query) {
     if (!query || !this._hass) return;
-    this._searchQuery = query;
-    this._showHistory = false;
     saveHistory(query);
+    this._q("#search-history-wrap").innerHTML = "";
     this._hass.callService("spotify_plus", "search", { query, limit: 10 });
   }
 
   _playUri(uri) {
     if (!this._hass) return;
     this._hass.callService("spotify_plus", "play_uri", { uri });
-    this._searchResults = [];
-    this._searchQuery = "";
-    this._showHistory = false;
-    this._render();
+    this._q("#search-input").value = "";
+    this._q("#search-history-wrap").innerHTML = "";
+    this._q("#search-results-wrap").innerHTML = "";
   }
 
-  _loadPlaylists() {
-    this._hass.callService("spotify_plus", "get_playlists", {});
-  }
-
-  _loadPlaylistTracks(playlistId, playlistName) {
-    this._activePlaylist = { id: playlistId, name: playlistName };
-    this._playlistTracks = null;
-    this._hass.callService("spotify_plus", "get_playlist_tracks", { playlist_id: playlistId });
-    this._render();
-  }
-
-  // ── Render helpers ────────────────────────────────────────────────────
-  _renderSearchTab() {
+  _showSearchHistory() {
     const history = loadHistory();
-    const items = [
-      ...(this._searchResults?.tracks?.items || []),
-      ...(this._searchResults?.albums?.items || []),
-      ...(this._searchResults?.playlists?.items || []),
-    ].slice(0, 12);
-
-    return `
-      <div class="search-wrap" id="search-wrap">
-        <div class="search-row">
-          <input class="search-input" id="search-input" type="text"
-            placeholder="Música, artista, álbum..."
-            value="${this._searchQuery.replace(/"/g, '&quot;')}"
-            autocomplete="off" />
-          <button class="search-btn" id="search-btn">${icon.search}</button>
-        </div>
-        ${this._showHistory && history.length ? `
-          <div class="search-history" id="search-history">
-            ${history.map(q => `
-              <div class="history-item" data-query="${q.replace(/"/g, '&quot;')}">
-                <span class="history-icon">${icon.clock}</span>
-                <span class="history-label">${q}</span>
-              </div>
-            `).join("")}
+    const wrap = this._q("#search-history-wrap");
+    if (!history.length) { wrap.innerHTML = ""; return; }
+    wrap.innerHTML = `
+      <div class="search-history">
+        ${history.map(q => `
+          <div class="history-item" data-query="${q.replace(/"/g, "&quot;")}">
+            <span class="history-icon">${icon.clock}</span>
+            <span class="history-label">${q}</span>
           </div>
-        ` : ""}
-        ${items.length ? `
-          <div class="search-results">
-            ${items.map(item => {
-              const img = item.album?.images?.[0]?.url || item.images?.[0]?.url || "";
-              const sub = item.artists?.map(a => a.name).join(", ") || item.owner?.display_name || item.type || "";
-              return `
-                <div class="result-item" data-uri="${item.uri}">
-                  ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
-                  <div class="result-info">
-                    <div class="result-name">${item.name}</div>
-                    <div class="result-sub">${sub}</div>
-                  </div>
-                  <button class="result-play-btn" data-uri="${item.uri}" title="Tocar">${icon.playSm}</button>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        ` : ""}
+        `).join("")}
       </div>
     `;
+    wrap.querySelectorAll(".history-item").forEach(el => {
+      // mousedown fires before blur so history item click is not swallowed
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        this._q("#search-input").value = el.dataset.query;
+        this._search(el.dataset.query);
+      });
+    });
   }
 
-  _renderPlaylistsTab() {
-    if (this._activePlaylist) {
-      const tracks = this._playlistTracks;
-      return `
-        <button class="back-btn" id="btn-back-playlists">${icon.back} ${this._activePlaylist.name}</button>
-        ${!tracks ? `<div style="color:var(--sp-text-dim);font-size:12px;padding:8px 0">Carregando...</div>` : `
-          <div class="track-list">
-            ${tracks.map(item => {
-              const t = item.track;
-              if (!t) return "";
-              const img = t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || "";
-              const sub = t.artists?.map(a => a.name).join(", ") || "";
-              return `
-                <div class="result-item" data-uri="${t.uri}">
-                  ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
-                  <div class="result-info">
-                    <div class="result-name">${t.name}</div>
-                    <div class="result-sub">${sub}</div>
-                  </div>
-                  <button class="result-play-btn" data-uri="${t.uri}" title="Tocar">${icon.playSm}</button>
-                </div>
-              `;
-            }).filter(Boolean).join("")}
-          </div>
-        `}
-      `;
+  _renderSearchResults(data) {
+    const container = this._q("#search-results-wrap");
+    if (!container) return;
+
+    const items = [
+      ...(data?.tracks?.items || []),
+      ...(data?.albums?.items || []),
+      ...(data?.playlists?.items || []),
+    ].slice(0, 12);
+
+    if (!items.length) {
+      container.innerHTML = `<div class="empty-text">Nenhum resultado encontrado.</div>`;
+      return;
     }
 
-    if (!this._playlists.length) {
-      return `<div style="color:var(--sp-text-dim);font-size:12px;padding:8px 0">Carregando playlists...</div>`;
-    }
-
-    return `
-      <div class="playlist-list">
-        ${this._playlists.map(pl => {
-          const img = pl.images?.[0]?.url || "";
-          const count = pl.tracks?.total ?? "";
+    container.innerHTML = `
+      <div class="search-results">
+        ${items.map(item => {
+          const img = item.album?.images?.[0]?.url || item.images?.[0]?.url || "";
+          const sub = item.artists?.map(a => a.name).join(", ") || item.owner?.display_name || item.type || "";
           return `
-            <div class="playlist-item" data-id="${pl.id}" data-name="${pl.name.replace(/"/g, '&quot;')}">
-              ${img ? `<img src="${img}" alt="" />` : `<div class="playlist-img-placeholder">${icon.musicSm}</div>`}
-              <div class="playlist-info">
-                <div class="playlist-name">${pl.name}</div>
-                ${count !== "" ? `<div class="playlist-sub">${count} músicas</div>` : ""}
+            <div class="result-item" data-uri="${item.uri}">
+              ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
+              <div class="result-info">
+                <div class="result-name">${item.name}</div>
+                <div class="result-sub">${sub}</div>
               </div>
-              <button class="playlist-play-btn" data-uri="${pl.uri}" title="Tocar playlist">${icon.playSm}</button>
+              <button class="result-play-btn" data-uri="${item.uri}">${icon.playSm}</button>
             </div>
           `;
         }).join("")}
       </div>
     `;
-  }
 
-  // ── Main render ───────────────────────────────────────────────────────
-  _render() {
-    if (!this._config.entity) return;
-
-    const state = this._getState();
-    const isPlaying = state?.state === "playing";
-    const isIdle = !state || !["playing", "paused"].includes(state.state);
-    const attr = state?.attributes || {};
-    const title = attr.media_title || "";
-    const artist = attr.media_artist || "";
-    const albumArt = attr.entity_picture || "";
-    const duration = attr.media_duration || 0;
-    const pos = this._currentPosition();
-    const volume = Math.round((attr.volume_level || 0) * 100);
-    const shuffle = attr.shuffle || false;
-    const repeat = attr.repeat || "off";
-    const progress = duration > 0 ? Math.min((pos / duration) * 100, 100) : 0;
-    const volIconHtml = volume === 0 ? icon.volMute : volume < 50 ? icon.volLow : icon.volHigh;
-
-    const players = this._getMediaPlayers();
-    const spotifyPlayers = players.filter(p => p.entity_id.includes("spotify"));
-    const otherPlayers = players.filter(p => !p.entity_id.includes("spotify")).slice(0, 6);
-    const allDevices = [...spotifyPlayers, ...otherPlayers];
-
-    this.shadowRoot.innerHTML = `
-      <style>${styles}</style>
-      <ha-card class="card">
-        ${albumArt ? `<div class="ambient" style="background:url('${albumArt}') center/cover"></div>` : ""}
-        <div class="inner">
-          ${isIdle ? `
-            <div class="idle-header">
-              <div class="idle-icon">${icon.music}</div>
-              <div class="idle-title">Spotify Plus</div>
-              <div class="idle-sub">Nenhuma música tocando</div>
-            </div>
-          ` : `
-            <!-- Now Playing -->
-            <div class="now-playing">
-              <div>
-                ${albumArt
-                  ? `<img class="album-art" src="${albumArt}" alt="Album art" />`
-                  : `<div class="album-art-placeholder">${icon.music}</div>`
-                }
-              </div>
-              <div class="track-info">
-                <div class="track-name" title="${title}">${title || "—"}</div>
-                <div class="track-artist">${artist || "—"}</div>
-                ${isPlaying
-                  ? `<div class="playing-badge"><div class="playing-dots"><span></span><span></span><span></span><span></span></div>Tocando</div>`
-                  : `<div class="paused-badge">⏸ Pausado</div>`
-                }
-              </div>
-            </div>
-
-            <!-- Progress -->
-            <div class="progress-section">
-              <div class="progress-track" id="progress-track">
-                <div class="progress-fill" style="width:${progress}%"></div>
-              </div>
-              <div class="progress-times">
-                <span class="progress-current">${formatTime(pos)}</span>
-                <span>${formatTime(duration)}</span>
-              </div>
-            </div>
-
-            <!-- Controls -->
-            <div class="controls">
-              <button class="ctrl-btn ${shuffle ? "active" : ""}" id="btn-shuffle">${icon.shuffle}</button>
-              <button class="ctrl-btn" id="btn-prev">${icon.prev}</button>
-              <button class="ctrl-btn play-pause" id="btn-playpause">${isPlaying ? icon.pause : icon.play}</button>
-              <button class="ctrl-btn" id="btn-next">${icon.next}</button>
-              <button class="ctrl-btn ${repeat !== "off" ? "active" : ""}" id="btn-repeat">${icon.repeat}</button>
-            </div>
-
-            <!-- Volume -->
-            <div class="volume-row">
-              <div class="volume-icon">${volIconHtml}</div>
-              <input type="range" class="volume-slider" id="vol-slider" min="0" max="100" value="${volume}" />
-              <span class="volume-pct">${volume}%</span>
-            </div>
-
-            ${allDevices.length > 1 ? `
-              <div class="divider"></div>
-              <div class="section-label">Dispositivos</div>
-              <div class="devices-list">
-                ${allDevices.map(d => `
-                  <div class="device-item ${d.active ? "active" : ""}" data-entity="${d.entity_id}">
-                    <div class="device-icon">${getDeviceIcon(d.type)}</div>
-                    <div class="device-name">${d.name}</div>
-                    ${d.active ? `<div class="device-active-dot"></div>` : ""}
-                  </div>
-                `).join("")}
-              </div>
-            ` : ""}
-          `}
-
-          <!-- Tabs -->
-          <div class="divider" style="margin-top:${isIdle ? "0" : "14px"}"></div>
-          <div class="tab-bar">
-            <button class="tab-btn ${this._activeTab === "search" ? "active" : ""}" id="tab-search">
-              ${icon.search} Buscar
-            </button>
-            <button class="tab-btn ${this._activeTab === "playlists" ? "active" : ""}" id="tab-playlists">
-              ${icon.playlist} Playlists
-            </button>
-          </div>
-
-          ${this._activeTab === "search" ? this._renderSearchTab() : this._renderPlaylistsTab()}
-        </div>
-      </ha-card>
-    `;
-
-    // Ambient glow
-    if (albumArt) {
-      requestAnimationFrame(() => {
-        const amb = this.shadowRoot.querySelector(".ambient");
-        if (amb) setTimeout(() => amb.classList.add("visible"), 100);
-      });
-    }
-
-    this._attachListeners();
-  }
-
-  _attachListeners() {
-    // Playback controls
-    this.shadowRoot.getElementById("btn-playpause")?.addEventListener("click", () => this._handlePlayPause());
-    this.shadowRoot.getElementById("btn-prev")?.addEventListener("click", () => this._handlePrev());
-    this.shadowRoot.getElementById("btn-next")?.addEventListener("click", () => this._handleNext());
-    this.shadowRoot.getElementById("btn-shuffle")?.addEventListener("click", () => this._handleShuffle());
-    this.shadowRoot.getElementById("btn-repeat")?.addEventListener("click", () => this._handleRepeat());
-
-    const volSlider = this.shadowRoot.getElementById("vol-slider");
-    volSlider?.addEventListener("change", (e) => this._handleVolume(parseInt(e.target.value)));
-    volSlider?.addEventListener("input", (e) => {
-      const pct = this.shadowRoot.querySelector(".volume-pct");
-      if (pct) pct.textContent = `${e.target.value}%`;
-    });
-
-    this.shadowRoot.querySelectorAll(".device-item").forEach(el => {
-      el.addEventListener("click", () => this._handleDeviceSwitch(el.dataset.entity));
-    });
-
-    // Tabs
-    this.shadowRoot.getElementById("tab-search")?.addEventListener("click", () => {
-      this._activeTab = "search";
-      this._render();
-    });
-    this.shadowRoot.getElementById("tab-playlists")?.addEventListener("click", () => {
-      this._activeTab = "playlists";
-      if (!this._playlists.length) this._loadPlaylists();
-      this._render();
-    });
-
-    // Search
-    const searchInput = this.shadowRoot.getElementById("search-input");
-    const searchBtn = this.shadowRoot.getElementById("search-btn");
-
-    searchBtn?.addEventListener("click", () => {
-      const q = searchInput?.value.trim();
-      if (q) this._search(q);
-    });
-
-    searchInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const q = searchInput.value.trim();
-        if (q) this._search(q);
-      } else if (e.key === "Escape") {
-        this._showHistory = false;
-        this._searchResults = [];
-        this._searchQuery = "";
-        this._render();
-      }
-    });
-
-    searchInput?.addEventListener("focus", () => {
-      if (!searchInput.value.trim()) {
-        this._showHistory = true;
-        this._render();
-      }
-    });
-
-    // History items
-    this.shadowRoot.querySelectorAll(".history-item").forEach(el => {
-      el.addEventListener("click", () => this._search(el.dataset.query));
-    });
-
-    // Search results play
-    this.shadowRoot.querySelectorAll(".result-play-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this._playUri(btn.dataset.uri);
-      });
-    });
-    this.shadowRoot.querySelectorAll(".result-item").forEach(el => {
+    container.querySelectorAll(".result-item").forEach(el => {
       el.addEventListener("click", () => this._playUri(el.dataset.uri));
     });
+    container.querySelectorAll(".result-play-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
+    });
+  }
 
-    // Playlists
-    this.shadowRoot.querySelectorAll(".playlist-item").forEach(el => {
+  // ── Playlists ─────────────────────────────────────────────────────────
+  _loadPlaylists() {
+    this._q("#sp-playlists-list").innerHTML = `<div class="loading-text">Carregando playlists...</div>`;
+    this._hass.callService("spotify_plus", "get_playlists", {});
+  }
+
+  _loadPlaylistTracks(playlistId, playlistName) {
+    this._currentPlaylistId   = playlistId;
+    this._currentPlaylistName = playlistName;
+
+    this._q("#sp-playlists-view").style.display = "none";
+    this._q("#sp-tracks-view").style.display    = "block";
+    this._q("#sp-pl-name").textContent = playlistName;
+    this._q("#sp-tracks-list").innerHTML = `<div class="loading-text">Carregando músicas...</div>`;
+
+    this._hass.callService("spotify_plus", "get_playlist_tracks", { playlist_id: playlistId });
+  }
+
+  _renderPlaylistsList() {
+    const listEl = this._q("#sp-playlists-list");
+    if (!this._playlists.length) {
+      listEl.innerHTML = `<div class="empty-text">Nenhuma playlist encontrada.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = this._playlists.map(pl => {
+      const img   = pl.images?.[0]?.url || "";
+      const count = pl.tracks?.total ?? "";
+      return `
+        <div class="playlist-item" data-id="${pl.id}" data-name="${pl.name.replace(/"/g, "&quot;")}">
+          ${img ? `<img src="${img}" alt="" />` : `<div class="playlist-img-placeholder">${icon.musicSm}</div>`}
+          <div class="playlist-info">
+            <div class="playlist-name">${pl.name}</div>
+            ${count !== "" ? `<div class="playlist-sub">${count} músicas</div>` : ""}
+          </div>
+          <button class="playlist-play-btn" data-uri="${pl.uri}">${icon.playSm}</button>
+        </div>
+      `;
+    }).join("");
+
+    listEl.querySelectorAll(".playlist-item").forEach(el => {
       el.addEventListener("click", (e) => {
         if (e.target.closest(".playlist-play-btn")) return;
         this._loadPlaylistTracks(el.dataset.id, el.dataset.name);
       });
     });
-    this.shadowRoot.querySelectorAll(".playlist-play-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this._playUri(btn.dataset.uri);
-      });
+    listEl.querySelectorAll(".playlist-play-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
     });
-
-    this.shadowRoot.getElementById("btn-back-playlists")?.addEventListener("click", () => {
-      this._activePlaylist = null;
-      this._playlistTracks = null;
-      this._render();
-    });
-
-    // Close history on outside click
-    const wrap = this.shadowRoot.getElementById("search-wrap");
-    if (wrap && this._showHistory) {
-      setTimeout(() => {
-        const handler = (e) => {
-          if (!wrap.contains(e.target)) {
-            this._showHistory = false;
-            document.removeEventListener("click", handler);
-            this._render();
-          }
-        };
-        document.addEventListener("click", handler);
-        this._outsideClickHandler = handler;
-      }, 0);
-    }
   }
 
+  _renderTracksList(items) {
+    const tracksEl = this._q("#sp-tracks-list");
+    const valid = items.filter(i => i.track && !i.track.is_local);
+
+    if (!valid.length) {
+      tracksEl.innerHTML = `<div class="empty-text">Nenhuma faixa encontrada.</div>`;
+      return;
+    }
+
+    tracksEl.innerHTML = valid.map(({ track: t }) => {
+      const img = t.album?.images?.[2]?.url || t.album?.images?.[0]?.url || "";
+      const sub = t.artists?.map(a => a.name).join(", ") || "";
+      return `
+        <div class="result-item" data-uri="${t.uri}">
+          ${img ? `<img src="${img}" alt="" />` : `<div class="result-img-placeholder">${icon.musicSm}</div>`}
+          <div class="result-info">
+            <div class="result-name">${t.name}</div>
+            <div class="result-sub">${sub}</div>
+          </div>
+          <button class="result-play-btn" data-uri="${t.uri}">${icon.playSm}</button>
+        </div>
+      `;
+    }).join("");
+
+    tracksEl.querySelectorAll(".result-item").forEach(el => {
+      el.addEventListener("click", () => this._playUri(el.dataset.uri));
+    });
+    tracksEl.querySelectorAll(".result-play-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => { e.stopPropagation(); this._playUri(btn.dataset.uri); });
+    });
+  }
+
+  // ── Card metadata ─────────────────────────────────────────────────────
   getCardSize() { return 5; }
 
-  static getConfigElement() {
-    return document.createElement("spotify-plus-card-editor");
-  }
+  static getConfigElement() { return document.createElement("spotify-plus-card-editor"); }
 
-  static getStubConfig() {
-    return { entity: "media_player.spotify" };
-  }
+  static getStubConfig() { return { entity: "media_player.spotify" }; }
 }
 
 customElements.define("spotify-plus-card", SpotifyPlusCard);

@@ -70,20 +70,42 @@ class SpotifyPlusAPI:
             async with session.get(
                 f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks",
                 headers=self._headers,
-                params={"limit": limit},
+                params={
+                    "limit": limit,
+                    # Request only the fields we display — keeps response under 10KB
+                    "fields": "items(track(name,uri,is_local,artists(name),album(images(url))))",
+                },
             ) as resp:
                 resp.raise_for_status()
                 return await resp.json()
 
     async def play_uri(self, uri: str, device_id: str = None) -> None:
-        params = {}
-        if device_id:
-            params["device_id"] = device_id
+        # tracks use "uris", albums/playlists use "context_uri"
+        body = {"uris": [uri]} if ":track:" in uri else {"context_uri": uri}
+
         async with aiohttp.ClientSession() as session:
+            target = device_id
+
+            # If no device specified, find the active one (or first available)
+            if not target:
+                async with session.get(
+                    f"{SPOTIFY_API_BASE}/me/player/devices",
+                    headers=self._headers,
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        devices = data.get("devices", [])
+                        active = next((d for d in devices if d.get("is_active")), None)
+                        fallback = devices[0] if devices else None
+                        chosen = active or fallback
+                        if chosen:
+                            target = chosen["id"]
+
+            params = {"device_id": target} if target else {}
             async with session.put(
                 f"{SPOTIFY_API_BASE}/me/player/play",
                 headers=self._headers,
                 params=params,
-                json={"uris": [uri]},
+                json=body,
             ) as resp:
                 resp.raise_for_status()
