@@ -5,5 +5,6 @@
   "dependencies": ["spotify"],
   "requirements": [],
   "iot_class": "cloud_polling",
-  "documentation": ""
+  "documentation": "",
+  "config_flow": true
 }

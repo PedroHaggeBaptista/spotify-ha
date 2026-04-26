@@ -8,6 +8,8 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_SEARCH = "search"
 SERVICE_GET_DEVICES = "get_devices"
 SERVICE_PLAY_URI = "play_uri"
+SERVICE_GET_PLAYLISTS = "get_playlists"
+SERVICE_GET_PLAYLIST_TRACKS = "get_playlist_tracks"
 
 SCHEMA_SEARCH = vol.Schema({
     vol.Required("query"): cv.string,
@@ -19,6 +21,15 @@ SCHEMA_GET_DEVICES = vol.Schema({})
 SCHEMA_PLAY_URI = vol.Schema({
     vol.Required("uri"): cv.string,
     vol.Optional("device_id"): cv.string,
+})
+
+SCHEMA_GET_PLAYLISTS = vol.Schema({
+    vol.Optional("limit", default=20): vol.All(int, vol.Range(min=1, max=50)),
+})
+
+SCHEMA_GET_PLAYLIST_TRACKS = vol.Schema({
+    vol.Required("playlist_id"): cv.string,
+    vol.Optional("limit", default=50): vol.All(int, vol.Range(min=1, max=100)),
 })
 
 
@@ -35,14 +46,10 @@ def register_services(hass):
         if not token:
             _LOGGER.error("Spotify token not available")
             return
-
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
-        query = call.data["query"]
-        limit = call.data.get("limit", 10)
-
         try:
-            results = await api.search(query, limit=limit)
+            results = await api.search(call.data["query"], limit=call.data.get("limit", 10))
             hass.bus.async_fire("spotify_plus_search_results", results)
         except Exception as err:
             _LOGGER.error("Search failed: %s", err)
@@ -52,10 +59,8 @@ def register_services(hass):
         if not token:
             _LOGGER.error("Spotify token not available")
             return
-
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
-
         try:
             devices = await api.get_devices()
             hass.bus.async_fire("spotify_plus_devices", {"devices": devices})
@@ -67,17 +72,44 @@ def register_services(hass):
         if not token:
             _LOGGER.error("Spotify token not available")
             return
-
         from .api import SpotifyPlusAPI
         api = SpotifyPlusAPI(token)
-        uri = call.data["uri"]
-        device_id = call.data.get("device_id")
-
         try:
-            await api.play_uri(uri, device_id=device_id)
+            await api.play_uri(call.data["uri"], device_id=call.data.get("device_id"))
         except Exception as err:
             _LOGGER.error("Play URI failed: %s", err)
+
+    async def handle_get_playlists(call):
+        token = _get_token(hass)
+        if not token:
+            _LOGGER.error("Spotify token not available")
+            return
+        from .api import SpotifyPlusAPI
+        api = SpotifyPlusAPI(token)
+        try:
+            playlists = await api.get_playlists(limit=call.data.get("limit", 20))
+            hass.bus.async_fire("spotify_plus_playlists", playlists)
+        except Exception as err:
+            _LOGGER.error("Get playlists failed: %s", err)
+
+    async def handle_get_playlist_tracks(call):
+        token = _get_token(hass)
+        if not token:
+            _LOGGER.error("Spotify token not available")
+            return
+        from .api import SpotifyPlusAPI
+        api = SpotifyPlusAPI(token)
+        try:
+            tracks = await api.get_playlist_tracks(
+                call.data["playlist_id"],
+                limit=call.data.get("limit", 50),
+            )
+            hass.bus.async_fire("spotify_plus_playlist_tracks", tracks)
+        except Exception as err:
+            _LOGGER.error("Get playlist tracks failed: %s", err)
 
     hass.services.async_register(DOMAIN, SERVICE_SEARCH, handle_search, schema=SCHEMA_SEARCH)
     hass.services.async_register(DOMAIN, SERVICE_GET_DEVICES, handle_get_devices, schema=SCHEMA_GET_DEVICES)
     hass.services.async_register(DOMAIN, SERVICE_PLAY_URI, handle_play_uri, schema=SCHEMA_PLAY_URI)
+    hass.services.async_register(DOMAIN, SERVICE_GET_PLAYLISTS, handle_get_playlists, schema=SCHEMA_GET_PLAYLISTS)
+    hass.services.async_register(DOMAIN, SERVICE_GET_PLAYLIST_TRACKS, handle_get_playlist_tracks, schema=SCHEMA_GET_PLAYLIST_TRACKS)

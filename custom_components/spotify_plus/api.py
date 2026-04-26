@@ -55,6 +55,26 @@ class SpotifyPlusAPI:
                 resp.raise_for_status()
                 return await resp.json()
 
+    async def get_playlists(self, limit: int = 20) -> dict:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/me/playlists",
+                headers=self._headers,
+                params={"limit": limit},
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+
+    async def get_playlist_tracks(self, playlist_id: str, limit: int = 50) -> dict:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SPOTIFY_API_BASE}/playlists/{playlist_id}/tracks",
+                headers=self._headers,
+                params={"limit": limit},
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+
     async def play_uri(self, uri: str, device_id: str = None) -> None:
         params = {}
         if device_id:
